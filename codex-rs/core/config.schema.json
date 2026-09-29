@@ -1970,6 +1970,21 @@
       ],
       "type": "string"
     },
+    "HarnessToml": {
+      "additionalProperties": false,
+      "description": "Harness runtime capability provider (DSH) settings.\n\nDeliberately not an arbitrary launcher: config carries only `enabled` and the profile name. The argument shape is fixed to `<node> <dsh-entry> --profile <profile>`; the node executable and the dsh entry path come from the implementation layer (`CODEX_HARNESS_NODE`, defaulting to `node`, and the required `CODEX_HARNESS_DSH_BIN`), never from config.",
+      "properties": {
+        "enabled": {
+          "description": "Whether the DSH harness runtime capability provider is spawned for sessions.",
+          "type": "boolean"
+        },
+        "profile": {
+          "description": "DSH profile launched as the runtime capability provider.",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "History": {
       "additionalProperties": false,
       "description": "Settings that govern if and what will be written to `~/.codex/history.jsonl`.",
@@ -7301,6 +7316,15 @@
         }
       ],
       "description": "Goal-related settings."
+    },
+    "harness": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/HarnessToml"
+        }
+      ],
+      "default": null,
+      "description": "Harness runtime capability provider (DSH) settings."
     },
     "hide_agent_reasoning": {
       "default": false,
