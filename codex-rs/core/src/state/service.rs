@@ -28,6 +28,7 @@ use codex_core_plugins::PluginsManager;
 use codex_extension_api::ExtensionData;
 use codex_extension_api::ExtensionDataInit;
 use codex_extension_api::ExtensionRegistry;
+use codex_harness_client::HarnessRuntimeManager;
 use codex_hooks::Hooks;
 use codex_http_client::RouteAwareClientPool;
 use codex_login::AuthManager;
@@ -48,6 +49,9 @@ use tokio::sync::Mutex;
 pub(crate) struct SessionServices {
     /// The single owner of live MCP connections for this thread.
     pub(crate) mcp_runtime: Arc<McpRuntime>,
+    /// The single owner of the live DSH runtime for this thread (SPEC §3.1:
+    /// tool registration is per-step, the runtime process is per-Session).
+    pub(crate) harness_runtime_manager: Arc<HarnessRuntimeManager>,
     /// Immutable MCP handlers scoped to this thread's current binding.
     pub(crate) mcp_handler_cache: McpHandlerCache,
     pub(crate) unified_exec_manager: UnifiedExecProcessManager,

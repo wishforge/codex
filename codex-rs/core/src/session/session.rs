@@ -24,6 +24,8 @@ use crate::state::ActiveTurn;
 use crate::turn_metadata::ExecutionMetadata;
 use codex_attachment_store::AttachmentStore;
 use codex_extension_api::ExtensionDataInit;
+use codex_harness_client::HarnessClient;
+use codex_harness_client::HarnessRuntimeManager;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::RouteAwareClientPool;
 use codex_login::auth::AgentIdentityAuthPolicy;
@@ -1573,6 +1575,24 @@ impl Session {
             let mcp_runtime = Arc::new(McpRuntime::empty(
                 mcp_projection.config.prefix_mcp_tool_names,
             ));
+            // The single owner of the live DSH runtime for this thread (SPEC
+            // §3.1). Spawn is best-effort: on failure the session degrades to
+            // a disabled manager (the four harness tools are then omitted from
+            // the router) instead of failing session construction (SPEC §9).
+            let harness_runtime_manager = if config.harness.enabled {
+                match spawn_harness_runtime(&config.harness.profile).await {
+                    Ok(manager) => Arc::new(manager),
+                    Err(error) => {
+                        tracing::warn!(
+                            error = %error,
+                            "failed to start harness runtime; continuing without harness tools"
+                        );
+                        Arc::new(HarnessRuntimeManager::disabled())
+                    }
+                }
+            } else {
+                Arc::new(HarnessRuntimeManager::disabled())
+            };
             let hooks_config = build_hooks_config(
                 &config,
                 plugins_manager.as_ref(),
@@ -1666,6 +1686,7 @@ impl Session {
                 // Start with an empty connection set. The initialized set is
                 // published after SessionConfigured so MCP events follow it.
                 mcp_runtime,
+                harness_runtime_manager,
                 mcp_handler_cache: Default::default(),
                 unified_exec_manager: UnifiedExecProcessManager::new(
                     config.background_terminal_max_timeout,
@@ -1928,6 +1949,39 @@ impl Session {
                 live_thread_init.discard().await;
                 Err(err)
             }
+        }
+    }
+}
+
+/// Spawn the session-owned DSH runtime capability provider and verify it with
+/// a `get_capabilities` handshake (SPEC §8/§9: RuntimeStarting → RuntimeReady).
+///
+/// The launch contract is code-fixed (see `codex_harness_client::launch_argv`);
+/// config only carries `enabled` and the profile name. `cwd` is the process
+/// cwd. Any failure — spawn error or handshake failure/timeout — tears the
+/// child down and returns `Err`, which the caller maps to the disabled manager.
+async fn spawn_harness_runtime(profile: &str) -> std::io::Result<HarnessRuntimeManager> {
+    const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+    let argv = codex_harness_client::launch_argv(profile)?;
+    let cwd = std::env::current_dir()?;
+    let client = HarnessClient::spawn(&argv, &cwd).await?;
+    let handshake = tokio::time::timeout(
+        HANDSHAKE_TIMEOUT,
+        client.request("get_capabilities", serde_json::json!({})),
+    )
+    .await;
+    match handshake {
+        Ok(Ok(_result)) => Ok(HarnessRuntimeManager::Running(client)),
+        Ok(Err(error)) => {
+            let _ = client.shutdown().await;
+            Err(std::io::Error::other(format!(
+                "harness runtime handshake failed: {error}"
+            )))
+        }
+        Err(_) => {
+            let _ = client.shutdown().await;
+            Err(std::io::Error::other("harness runtime handshake timed out"))
         }
     }
 }

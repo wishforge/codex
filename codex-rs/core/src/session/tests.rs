@@ -53,6 +53,7 @@ use core_test_support::test_codex::TurnInputRequest as ExternalTurnInputRequest;
 
 use codex_features::Feature;
 use codex_file_system::FileSystemSandboxContext;
+use codex_harness_client::HarnessRuntimeManager;
 use codex_http_client::ClientRouteClass;
 use codex_http_client::HttpClientFactory;
 use codex_http_client::OutboundProxyPolicy;
@@ -6619,6 +6620,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
     .expect("initialize test hooks");
     let services = SessionServices {
         mcp_runtime,
+        harness_runtime_manager: Arc::new(HarnessRuntimeManager::disabled()),
         mcp_handler_cache: Default::default(),
         unified_exec_manager: UnifiedExecProcessManager::new(
             config.background_terminal_max_timeout,
@@ -8895,6 +8897,7 @@ where
     .expect("initialize test hooks");
     let services = SessionServices {
         mcp_runtime,
+        harness_runtime_manager: Arc::new(HarnessRuntimeManager::disabled()),
         mcp_handler_cache: Default::default(),
         unified_exec_manager: UnifiedExecProcessManager::new(
             config.background_terminal_max_timeout,

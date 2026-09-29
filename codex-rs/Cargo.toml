@@ -9,6 +9,7 @@ members = [
     "backend-client",
     "bwrap",
     "build-info",
+    "harness-client",
     "ansi-escape",
     "attachment-store",
     "async-utils",
@@ -218,6 +219,7 @@ codex-file-system = { path = "file-system" }
 codex-exec-server-protocol = { path = "exec-server-protocol" }
 codex-exec-server = { path = "exec-server" }
 codex-exec-server-test-support = { path = "exec-server/tests/support" }
+codex-harness-client = { path = "harness-client" }
 codex-execpolicy = { path = "execpolicy" }
 codex-extension-api = { path = "ext/extension-api" }
 codex-extension-items = { path = "ext/items" }

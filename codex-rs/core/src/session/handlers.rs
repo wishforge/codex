@@ -311,6 +311,11 @@ pub(super) async fn shutdown_session_runtime(sess: &Arc<Session>) {
     if let Err(err) = sess.services.code_mode_service.shutdown().await {
         warn!("failed to shutdown code mode session: {err}");
     }
+    // Tear down the session-owned DSH runtime (EOF → grace → SIGKILL ladder
+    // inside the client). A non-graceful exit is logged, never fatal.
+    if let Err(err) = sess.services.harness_runtime_manager.shutdown().await {
+        warn!("failed to shutdown harness runtime: {err}");
+    }
     sess.stop_mcp_prewarm_worker().await;
     {
         let _refresh = sess.mcp_refresh.acquire().await;
