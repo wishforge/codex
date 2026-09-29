@@ -74,8 +74,19 @@ pub const CODEX_HARNESS_NODE_ENV: &str = "CODEX_HARNESS_NODE";
 /// `<node> <dsh-entry> --profile <profile>`.
 ///
 /// This is deliberately not configurable beyond the profile name — config must
-/// not become an arbitrary process launcher (SPEC §10).
+/// not become an arbitrary process launcher (SPEC §10). The profile name is
+/// validated so a config value can never masquerade as an extra flag.
 pub fn launch_argv(profile: &str) -> std::io::Result<Vec<std::ffi::OsString>> {
+    if profile.is_empty()
+        || profile.starts_with('-')
+        || profile
+            .chars()
+            .any(|c| c.is_whitespace() || c == '/' || c == '\\' || c.is_control())
+    {
+        return Err(std::io::Error::other(format!(
+            "invalid harness profile name: {profile:?}"
+        )));
+    }
     let node = std::env::var(CODEX_HARNESS_NODE_ENV).unwrap_or_else(|_| "node".to_string());
     let dsh_bin = std::env::var(CODEX_HARNESS_DSH_BIN_ENV).map_err(|_| {
         std::io::Error::other(format!(
@@ -118,7 +129,12 @@ impl HarnessClient {
             .current_dir(cwd)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            // Discard the child's stderr: stdout is the only protocol channel
+            // and the runtime routes its diagnostics to an in-memory logger.
+            // A piped stderr nobody reads would fill after 64 KiB and block
+            // the child forever (the same trade-off as the exec-server and
+            // rmcp-client child spawns).
+            .stderr(std::process::Stdio::null())
             .kill_on_drop(true);
         let mut child = command.spawn()?;
         let stdin = child
@@ -348,6 +364,46 @@ impl HarnessRuntimeManager {
         match self {
             Self::Disabled => Ok(()),
             Self::Running(client) => client.shutdown().await,
+        }
+    }
+}
+
+#[cfg(test)]
+mod launch_argv_tests {
+    use super::*;
+
+    #[test]
+    fn launch_argv_builds_the_fixed_contract_for_a_valid_profile() {
+        // SAFETY: single-threaded test scope; the two variables are only read
+        // by this test and `launch_argv`.
+        unsafe {
+            std::env::set_var(CODEX_HARNESS_NODE_ENV, "node-test");
+            std::env::set_var(CODEX_HARNESS_DSH_BIN_ENV, "/tmp/dsh-entry.js");
+        }
+        let argv = launch_argv("harness-capability").expect("valid profile");
+        assert_eq!(
+            argv,
+            vec![
+                std::ffi::OsString::from("node-test"),
+                std::ffi::OsString::from("/tmp/dsh-entry.js"),
+                std::ffi::OsString::from("--profile"),
+                std::ffi::OsString::from("harness-capability"),
+            ]
+        );
+    }
+
+    #[test]
+    fn launch_argv_rejects_profiles_that_could_masquerade_as_flags() {
+        // SAFETY: same single-threaded scope as above; rejection happens before
+        // the environment is read.
+        unsafe {
+            std::env::set_var(CODEX_HARNESS_DSH_BIN_ENV, "/tmp/dsh-entry.js");
+        }
+        for bad in ["", "--help", "-profile", "a b", "a/b", "a\\b", "a\nb"] {
+            assert!(
+                launch_argv(bad).is_err(),
+                "profile {bad:?} must be rejected"
+            );
         }
     }
 }
