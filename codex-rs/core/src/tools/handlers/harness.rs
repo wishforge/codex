@@ -396,7 +396,10 @@ mod tests {
             .expect("valid policy_check params without scopeId");
         // Optional `scopeId` must be omitted, not sent as JSON null: the runtime
         // rejects a non-string scopeId and would fail every scope-less call.
-        assert!(params.get("scopeId").is_none(), "scopeId must be omitted when absent, got {params}");
+        assert!(
+            params.get("scopeId").is_none(),
+            "scopeId must be omitted when absent, got {params}"
+        );
 
         // get_context / get_capabilities take no parameters.
         for name in [HARNESS_GET_CONTEXT, HARNESS_GET_CAPABILITIES] {

@@ -99,7 +99,8 @@ pub struct HarnessClient {
     /// which is the runtime's documented EOF shutdown trigger.
     stdin_tx: Mutex<Option<mpsc::Sender<String>>>,
     tasks: Mutex<Vec<JoinHandle<()>>>,
-    child: Mutex<Child>,
+    /// `None` after shutdown has taken the child for its exit/kill ladder.
+    child: Mutex<Option<Child>>,
 }
 
 impl HarnessClient {
@@ -140,7 +141,7 @@ impl HarnessClient {
             pending,
             stdin_tx: Mutex::new(Some(stdin_tx)),
             tasks: Mutex::new(vec![reader, writer]),
-            child: Mutex::new(child),
+            child: Mutex::new(Some(child)),
         }))
     }
 
@@ -175,11 +176,9 @@ impl HarnessClient {
             ));
         }
 
-        rx.await.unwrap_or_else(|_| {
-            Err(HarnessRequestError::Unavailable(
-                "request dropped before response (runtime exited or was shut down)",
-            ))
-        })
+        rx.await.unwrap_or(Err(HarnessRequestError::Unavailable(
+            "request dropped before response (runtime exited or was shut down)",
+        )))
     }
 
     /// Shut the runtime down: close stdin (EOF → the runtime disposes and
@@ -204,11 +203,20 @@ impl HarnessClient {
         // Drop the stdin sender; write_frames then drains, closes stdin (EOF),
         // and exits once the runtime stops sending frames.
         self.stdin_tx.lock().await.take();
-        let mut tasks = self.tasks.lock().await;
-        for task in tasks.drain(..) {
+        // Collect the task handles inside a tight scope: the guard must not be
+        // held across the awaits below (clippy::await_holding_invalid_type).
+        let tasks: Vec<JoinHandle<()>> = {
+            let mut guard = self.tasks.lock().await;
+            guard.drain(..).collect()
+        };
+        for task in tasks {
             task.abort();
         }
-        let mut child = self.child.lock().await;
+        // Take the child out of the lock so the exit/kill ladder awaits without
+        // holding the guard (shutdown is terminal; the child is not put back).
+        let Some(mut child) = self.child.lock().await.take() else {
+            return Ok(());
+        };
         for _ in 0..50 {
             match child.try_wait() {
                 Ok(Some(_)) => return Ok(()),

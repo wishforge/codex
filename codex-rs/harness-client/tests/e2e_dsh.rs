@@ -9,6 +9,10 @@
 //! CODEX_HARNESS_DSH_BIN=/path/to/deepseek-harness/apps/cli/lib/bin.js \
 //!   cargo test -p codex-harness-client --test e2e_dsh -- --ignored
 //! ```
+// The setup helpers below panic on a missing prerequisite or a failed spawn;
+// that is the intended integration-test contract (same allowance as
+// `tools/tests/json_schema_policy_fixtures.rs`).
+#![allow(clippy::expect_used)]
 
 use std::sync::Arc;
 
@@ -17,7 +21,8 @@ use codex_harness_client::HarnessRuntimeManager;
 use serde_json::json;
 
 fn dsh_bin() -> String {
-    std::env::var("CODEX_HARNESS_DSH_BIN").expect("CODEX_HARNESS_DSH_BIN must point at the DSH CLI entry")
+    std::env::var("CODEX_HARNESS_DSH_BIN")
+        .expect("CODEX_HARNESS_DSH_BIN must point at the DSH CLI entry")
 }
 
 /// Spawn the real runtime and run the handshake.
@@ -70,7 +75,10 @@ async fn e2e_real_dsh_runtime_capabilities() {
 
     // policy_check: denial is a result, never an error.
     let denied = client
-        .request("policy_check", json!({ "operation": "write", "path": "/definitely/outside/file.txt" }))
+        .request(
+            "policy_check",
+            json!({ "operation": "write", "path": "/definitely/outside/file.txt" }),
+        )
         .await
         .expect("policy_check denied path");
     assert_eq!(denied["decision"], "denied");
@@ -107,7 +115,7 @@ async fn e2e_real_dsh_runtime_capabilities() {
         other => panic!("expected remote error, got {other:?}"),
     }
 
-    client.shutdown().await;
+    client.shutdown().await.expect("graceful shutdown");
 }
 
 #[tokio::test(flavor = "multi_thread")]
