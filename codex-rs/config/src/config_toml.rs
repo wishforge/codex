@@ -156,7 +156,10 @@ pub struct CloudToml {
 /// Harness runtime capability provider (DSH) settings.
 ///
 /// Deliberately not an arbitrary launcher: config carries only `enabled` and
-/// the profile name; node/dsh binary resolution is code-fixed.
+/// the profile name. The argument shape is fixed to `<node> <dsh-entry>
+/// --profile <profile>`; the node executable and the dsh entry path come from
+/// the implementation layer (`CODEX_HARNESS_NODE`, defaulting to `node`, and the
+/// required `CODEX_HARNESS_DSH_BIN`), never from config.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
 pub struct HarnessToml {
