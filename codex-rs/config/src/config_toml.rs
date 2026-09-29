@@ -153,6 +153,19 @@ pub struct CloudToml {
     pub skills: Option<FeatureToggleToml>,
 }
 
+/// Harness runtime capability provider (DSH) settings.
+///
+/// Deliberately not an arbitrary launcher: config carries only `enabled` and
+/// the profile name; node/dsh binary resolution is code-fixed.
+#[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
+#[schemars(deny_unknown_fields)]
+pub struct HarnessToml {
+    /// Whether the DSH harness runtime capability provider is spawned for sessions.
+    pub enabled: Option<bool>,
+    /// DSH profile launched as the runtime capability provider.
+    pub profile: Option<String>,
+}
+
 /// Optional enablement of a configured feature.
 #[derive(Serialize, Deserialize, Debug, Clone, Default, PartialEq, Eq, JsonSchema)]
 #[schemars(deny_unknown_fields)]
@@ -292,6 +305,10 @@ pub struct ConfigToml {
     // Uses the raw MCP input shape (custom deserialization) rather than `McpServerConfig`.
     #[schemars(schema_with = "crate::schema::mcp_servers_schema")]
     pub mcp_servers: HashMap<String, McpServerConfig>,
+
+    /// Harness runtime capability provider (DSH) settings.
+    #[serde(default)]
+    pub harness: Option<HarnessToml>,
 
     /// Trusted enterprise IdP shared by EMA-enabled MCP servers and plugins.
     #[serde(default)]

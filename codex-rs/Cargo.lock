@@ -2925,6 +2925,7 @@ dependencies = [
  "codex-git-utils",
  "codex-guardian-context",
  "codex-guardian-reviewer",
+ "codex-harness-client",
  "codex-history",
  "codex-home",
  "codex-hooks",
@@ -3576,6 +3577,18 @@ dependencies = [
  "uuid",
  "wiremock",
  "zstd",
+]
+
+[[package]]
+name = "codex-harness-client"
+version = "0.0.0"
+dependencies = [
+ "codex-exec-server-protocol",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

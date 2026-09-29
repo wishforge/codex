@@ -1085,6 +1085,9 @@ pub struct Config {
     /// Configuration for the experimental code-mode tool surface.
     pub code_mode: CodeModeConfig,
 
+    /// Harness runtime capability provider (DSH) settings, resolved from config.
+    pub harness: HarnessConfig,
+
     /// Maximum poll window for background terminal output (`write_stdin`), in milliseconds.
     /// Default: `300000` (5 minutes).
     pub background_terminal_max_timeout: u64,
@@ -1160,6 +1163,41 @@ pub struct ToolRegistryConfig {
 }
 
 const DEFAULT_CODE_MODE_EXEC_YIELD_TIME_MS: u64 = 30_000;
+
+/// Default DSH profile launched as the harness runtime capability provider.
+pub(crate) const DEFAULT_HARNESS_PROFILE: &str = "harness-capability";
+
+/// Resolved harness runtime capability provider (DSH) configuration.
+///
+/// Deliberately not an arbitrary launcher: only `enabled` and the profile name
+/// are configurable; the node/dsh binary resolution is code-fixed (see
+/// `codex_harness_client::launch_argv`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HarnessConfig {
+    /// Whether the DSH runtime is spawned for sessions.
+    pub enabled: bool,
+    /// DSH profile passed as `--profile` to the runtime.
+    pub profile: String,
+}
+
+impl Default for HarnessConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            profile: DEFAULT_HARNESS_PROFILE.to_string(),
+        }
+    }
+}
+
+fn resolve_harness_config(config_toml: &ConfigToml) -> HarnessConfig {
+    let harness = config_toml.harness.as_ref();
+    HarnessConfig {
+        enabled: harness.and_then(|harness| harness.enabled).unwrap_or(false),
+        profile: harness
+            .and_then(|harness| harness.profile.clone())
+            .unwrap_or_else(|| DEFAULT_HARNESS_PROFILE.to_string()),
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CodeModeConfig {
@@ -3786,6 +3824,7 @@ impl Config {
                 .unwrap_or_default(),
         };
         let code_mode = resolve_code_mode_config(&cfg);
+        let harness = resolve_harness_config(&cfg);
         let multi_agent_v2 = resolve_multi_agent_v2_config(&cfg);
         let token_budget = resolve_token_budget_config(&cfg, &features)?;
         let rollout_budget = resolve_rollout_budget_config(&cfg, &features)?;
@@ -4456,6 +4495,7 @@ impl Config {
             update_plan_enabled,
             tool_registry,
             code_mode,
+            harness,
             background_terminal_max_timeout,
             thread_unload_delay,
             ghost_snapshot,

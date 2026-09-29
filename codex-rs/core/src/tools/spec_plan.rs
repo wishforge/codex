@@ -14,6 +14,7 @@ use crate::tools::handlers::DynamicToolHandler;
 use crate::tools::handlers::ExecCommandHandler;
 use crate::tools::handlers::ExecCommandHandlerOptions;
 use crate::tools::handlers::GetContextRemainingHandler;
+use crate::tools::handlers::HarnessToolHandler;
 use crate::tools::handlers::ListAvailablePluginsToInstallHandler;
 use crate::tools::handlers::ListMcpResourceTemplatesHandler;
 use crate::tools::handlers::ListMcpResourcesHandler;
@@ -64,6 +65,7 @@ use codex_connectors::apps_config_from_layer_stack;
 use codex_extension_api::ExtensionData;
 use codex_features::Feature;
 use codex_features::SleepToolMode;
+use codex_harness_client::HarnessRuntimeManager;
 use codex_login::AuthManager;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_prompts::ResolvedModelMessages;
@@ -171,6 +173,7 @@ pub(crate) fn build_tool_router(
         extension_tool_executors(session, step_store),
         &mut registry,
     );
+    append_harness_tools(session, &mut registry);
     append_dynamic_tool_runtimes(&turn_context.dynamic_tools, &mut registry);
     let hosted_specs = hosted_model_tool_specs(
         turn_context,
@@ -1419,6 +1422,29 @@ fn add_collaboration_tools(context: &CoreToolPlanContext<'_>, registry: &mut Too
                 .add_with_exposure(WaitAgentHandler::new(context.wait_agent_timeouts), exposure);
             registry.add_with_exposure(CloseAgentHandler, exposure);
         }
+    }
+}
+
+/// Register the four fixed harness capability tools against the session-owned
+/// runtime manager.
+///
+/// Per-step, stateless, and reference-only: the router never owns the runtime
+/// process (SPEC §3.1: Tool Registration ≠ Runtime Process Lifecycle). When
+/// the manager is unavailable the router build proceeds without the tools,
+/// mirroring the existing per-source skip pattern.
+fn append_harness_tools(session: &Session, registry: &mut ToolRegistry) {
+    register_harness_tools(&session.services.harness_runtime_manager, registry);
+}
+
+pub(crate) fn register_harness_tools(
+    manager: &Arc<HarnessRuntimeManager>,
+    registry: &mut ToolRegistry,
+) {
+    if !manager.is_available() {
+        return;
+    }
+    for handler in HarnessToolHandler::tool_set(Arc::clone(manager)) {
+        registry.register_external(handler);
     }
 }
 

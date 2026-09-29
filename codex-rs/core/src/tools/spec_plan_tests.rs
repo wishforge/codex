@@ -57,11 +57,13 @@ use crate::tools::handlers::WaitForEnvironmentHandler;
 use crate::tools::handlers::multi_agents_spec::MULTI_AGENT_V1_NAMESPACE;
 use crate::tools::registry::CoreToolRuntime;
 use crate::tools::registry::RegisteredTool;
+use crate::tools::registry::ToolRegistry;
 use crate::tools::router::ToolRouter;
 use crate::tools::router::ToolSuggestCandidates;
 use crate::tools::router::ToolSuggestPresentation;
 use crate::tools::spec_plan::append_source_tools;
 use crate::tools::spec_plan::build_core_tool_registry;
+use crate::tools::spec_plan::register_harness_tools;
 
 const MULTI_AGENT_V2_NAMESPACE: &str = "collaboration";
 
@@ -3408,4 +3410,53 @@ async fn hosted_web_search_and_standalone_image_generation_follow_runtime_gates(
     .await;
     bedrock_with_standalone_web_search.assert_visible_contains(&["web_search"]);
     bedrock_with_standalone_web_search.assert_visible_lacks(&["web"]);
+}
+
+#[tokio::test]
+async fn register_harness_tools_skips_when_manager_is_disabled() {
+    let manager = Arc::new(codex_harness_client::HarnessRuntimeManager::disabled());
+    let mut registry = ToolRegistry::empty_for_test();
+    register_harness_tools(&manager, &mut registry);
+    assert!(registry.tool_names_for_test().is_empty());
+}
+
+#[tokio::test]
+async fn register_harness_tools_registers_the_four_fixed_tools() {
+    let client = codex_harness_client::HarnessClient::spawn(
+        &[std::ffi::OsString::from("/bin/cat")],
+        std::env::temp_dir().as_path(),
+    )
+    .await
+    .expect("spawn echo fixture");
+    let manager = Arc::new(codex_harness_client::HarnessRuntimeManager::Running(client));
+    let mut registry = ToolRegistry::empty_for_test();
+    register_harness_tools(&manager, &mut registry);
+
+    let mut names: Vec<String> = registry
+        .tool_names_for_test()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    names.sort();
+    assert_eq!(
+        names,
+        vec![
+            "harness.create_scope",
+            "harness.get_capabilities",
+            "harness.get_context",
+            "harness.policy_check",
+        ]
+    );
+
+    for name in &names {
+        let tool = registry
+            .tool(&codex_tools::ToolName::plain(name.clone()))
+            .expect("registered harness tool");
+        let codex_tools::ToolSpec::Function(spec) = tool.spec() else {
+            panic!("harness tool {name} must expose a function spec");
+        };
+        assert_eq!(spec.name, *name);
+    }
+
+    manager.shutdown().await.expect("graceful shutdown");
 }
